@@ -29,6 +29,7 @@ export default function Feed() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [fetching, setFetching] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [likingIds, setLikingIds] = useState<Set<string>>(new Set());
 
   const fetchPosts = async () => {
     const { data: postsData, error } = await supabase
@@ -76,7 +77,14 @@ export default function Feed() {
   };
 
   const toggleLike = async (post: Post) => {
-    // Optimistic UI update — flip it instantly, then sync with server
+    // Block if a request for this post is already in progress
+    if (likingIds.has(post.id)) return;
+
+    setLikingIds((prev) => new Set(prev).add(post.id));
+
+    const wasLiked = post.liked_by_me;
+
+    // Optimistic UI update
     setPosts((prev) =>
       prev.map((p) =>
         p.id === post.id
@@ -89,7 +97,7 @@ export default function Feed() {
       )
     );
 
-    if (post.liked_by_me) {
+    if (wasLiked) {
       const { error } = await supabase
         .from('likes')
         .delete()
@@ -100,8 +108,25 @@ export default function Feed() {
       const { error } = await supabase
         .from('likes')
         .insert({ post_id: post.id, user_id: session?.user.id });
-      if (error) console.error('Like error:', error);
+
+      if (error) {
+        console.error('Like error:', error);
+        // Roll back the optimistic update if it actually failed (e.g. real duplicate)
+        if (error.code === '23505') {
+          setPosts((prev) =>
+            prev.map((p) =>
+              p.id === post.id ? { ...p, liked_by_me: true } : p
+            )
+          );
+        }
+      }
     }
+
+    setLikingIds((prev) => {
+      const next = new Set(prev);
+      next.delete(post.id);
+      return next;
+    });
   };
 
   if (loading) return null;
@@ -128,7 +153,12 @@ export default function Feed() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
           renderItem={({ item }) => (
-            <Pressable style={styles.post} onPress={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}>
+            <Pressable
+              style={styles.post}
+              onPress={() =>
+                router.push({ pathname: '/post/[id]', params: { id: item.id } })
+              }
+            >
               {item.image_url && (
                 <Image source={{ uri: item.image_url }} style={styles.postImage} />
               )}
