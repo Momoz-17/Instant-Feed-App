@@ -22,6 +22,7 @@ type Post = {
   user_id: string;
   like_count: number;
   liked_by_me: boolean;
+  comment_count: number;
 };
 
 export default function Feed() {
@@ -51,12 +52,23 @@ export default function Feed() {
       return;
     }
 
+    const { data: commentsData, error: commentsError } = await supabase
+      .from('comments')
+      .select('post_id');
+
+    if (commentsError) {
+      console.error('Fetch comments error:', commentsError);
+      return;
+    }
+
     const merged = postsData.map((post) => {
       const postLikes = likesData.filter((l) => l.post_id === post.id);
+      const postComments = commentsData.filter((c) => c.post_id === post.id);
       return {
         ...post,
         like_count: postLikes.length,
         liked_by_me: postLikes.some((l) => l.user_id === session?.user.id),
+        comment_count: postComments.length,
       };
     });
 
@@ -77,14 +89,12 @@ export default function Feed() {
   };
 
   const toggleLike = async (post: Post) => {
-    // Block if a request for this post is already in progress
     if (likingIds.has(post.id)) return;
 
     setLikingIds((prev) => new Set(prev).add(post.id));
 
     const wasLiked = post.liked_by_me;
 
-    // Optimistic UI update
     setPosts((prev) =>
       prev.map((p) =>
         p.id === post.id
@@ -111,7 +121,6 @@ export default function Feed() {
 
       if (error) {
         console.error('Like error:', error);
-        // Roll back the optimistic update if it actually failed (e.g. real duplicate)
         if (error.code === '23505') {
           setPosts((prev) =>
             prev.map((p) =>
@@ -127,6 +136,10 @@ export default function Feed() {
       next.delete(post.id);
       return next;
     });
+  };
+
+  const goToPost = (postId: string) => {
+    router.push({ pathname: '/post/[id]', params: { id: postId } });
   };
 
   if (loading) return null;
@@ -153,26 +166,29 @@ export default function Feed() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
           renderItem={({ item }) => (
-            <Pressable
-              style={styles.post}
-              onPress={() =>
-                router.push({ pathname: '/post/[id]', params: { id: item.id } })
-              }
-            >
+            <Pressable style={styles.post} onPress={() => goToPost(item.id)}>
               {item.image_url && (
                 <Image source={{ uri: item.image_url }} style={styles.postImage} />
               )}
               {item.content ? <Text style={styles.postContent}>{item.content}</Text> : null}
 
               <View style={styles.footer}>
-                <Pressable style={styles.likeButton} onPress={() => toggleLike(item)}>
-                  <Ionicons
-                    name={item.liked_by_me ? 'heart' : 'heart-outline'}
-                    size={22}
-                    color={item.liked_by_me ? '#e74c3c' : '#666'}
-                  />
-                  <Text style={styles.likeCount}>{item.like_count}</Text>
-                </Pressable>
+                <View style={styles.actionsRow}>
+                  <Pressable style={styles.actionButton} onPress={() => toggleLike(item)}>
+                    <Ionicons
+                      name={item.liked_by_me ? 'heart' : 'heart-outline'}
+                      size={22}
+                      color={item.liked_by_me ? '#e74c3c' : '#666'}
+                    />
+                    <Text style={styles.actionCount}>{item.like_count}</Text>
+                  </Pressable>
+
+                  <Pressable style={styles.actionButton} onPress={() => goToPost(item.id)}>
+                    <Ionicons name="chatbubble-outline" size={20} color="#666" />
+                    <Text style={styles.actionCount}>{item.comment_count}</Text>
+                  </Pressable>
+                </View>
+
                 <Text style={styles.postDate}>
                   {new Date(item.created_at).toLocaleString()}
                 </Text>
@@ -218,7 +234,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 10,
   },
-  likeButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  likeCount: { fontSize: 14, color: '#666' },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+  },
+  actionButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  actionCount: { fontSize: 14, color: '#666' },
   postDate: { fontSize: 12, color: '#999' },
 });
