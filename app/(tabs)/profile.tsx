@@ -9,7 +9,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
-import { useFocusEffect, router } from 'expo-router';
+import { useFocusEffect, router, Redirect } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 
@@ -21,7 +21,7 @@ type MyPost = {
 
 const numColumns = 3;
 const screenWidth = Dimensions.get('window').width;
-const itemSize = (screenWidth - 32 - (numColumns - 1) * 4) / numColumns; // 32 = horizontal padding, 4 = gap
+const itemSize = (screenWidth - 32 - (numColumns - 1) * 4) / numColumns;
 
 export default function Profile() {
   const { session, signOut } = useAuth();
@@ -77,6 +77,8 @@ export default function Profile() {
     }, [])
   );
 
+  if (!session) return <Redirect href="/(auth)/login" />;
+
   return (
     <View style={styles.container}>
       <FlatList
@@ -109,7 +111,13 @@ export default function Profile() {
               </View>
             </View>
 
-            <Pressable style={styles.button} onPress={signOut}>
+            <Pressable
+              style={styles.button}
+              onPress={async () => {
+                await signOut();
+                router.replace('/(auth)/login');
+              }}
+            >
               <Text style={styles.buttonText}>Sign out</Text>
             </Pressable>
 
@@ -164,12 +172,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 12,
     minWidth: 88,
-    // iOS shadow
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 6,
-    // Android shadow
     elevation: 3,
   },
   statNumber: { fontSize: 20, fontWeight: 'bold' },

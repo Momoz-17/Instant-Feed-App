@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Redirect } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 
@@ -75,6 +76,8 @@ export default function Search() {
       if (error) console.error('Follow error:', error);
     }
   };
+
+  if (!session) return <Redirect href="/(auth)/login" />;
 
   return (
     <View style={styles.container}>
